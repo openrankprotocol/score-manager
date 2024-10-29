@@ -34,4 +34,9 @@
 
 7. **Update Configuration**
    - Copy the deployed contract address into `client/config.toml` for use in the smart contract client.
+   - **Note**: If you updated contract source code, you should copy the contract abi json to `client/abi` dir, and rebuild `client`.  
+   Otherwise, the `client` keeps using old abi json.  
+   ```sh
+   cp out/ComputeManager.sol/ComputeManager.json ../client/abi  
+   ```
 

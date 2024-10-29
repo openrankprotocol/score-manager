@@ -5,5 +5,5 @@ sol!(
     #[allow(missing_docs)]
     #[sol(rpc)]
     ComputeManager,
-    "../contracts/out/ComputeManager.sol/ComputeManager.json"
+    "./abi/ComputeManager.json"
 );
