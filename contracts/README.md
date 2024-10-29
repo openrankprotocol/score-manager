@@ -4,7 +4,7 @@
 
 1. **Navigate to the Project Directory**
    ```sh
-   cd compute-manager-smart-contract
+   cd contracts
    ```
 
 2. **Build the Smart Contract**
@@ -33,5 +33,5 @@
    ```
 
 7. **Update Configuration**
-   - Copy the deployed contract address into `smart-contract-client/config.toml` for use in the smart contract client.
+   - Copy the deployed contract address into `client/config.toml` for use in the smart contract client.
 
