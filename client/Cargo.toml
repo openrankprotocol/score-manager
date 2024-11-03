@@ -9,7 +9,7 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
-openrank-common = { git = "ssh://git@github.com/openrankprotocol/openrank.git", package = "openrank-common" }
+openrank-common = { git = "https://github.com/openrankprotocol/openrank.git", package = "openrank-common" }
 
 tokio = { version = "1.38", default-features = false, features = ["full"]}
 tracing = "0.1.37"

@@ -3345,8 +3345,9 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 [[package]]
 name = "openrank-common"
 version = "0.1.1"
-source = "git+ssh://git@github.com/openrankprotocol/openrank.git#a51727a5ded1b7c3f0996d758c7357d67701d92c"
+source = "git+https://github.com/openrankprotocol/openrank.git#25ddf7baf4c15a5457743c26ae971f2cbb4d5a47"
 dependencies = [
+ "alloy-primitives",
  "alloy-rlp",
  "alloy-rlp-derive",
  "directories",
