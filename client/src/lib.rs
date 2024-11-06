@@ -70,7 +70,7 @@ impl ComputeManagerClient {
         }
     }
 
-    pub async fn submit_openrank_tx(&self, tx: Tx) -> Result<()> {
+    async fn submit_openrank_tx(&self, tx: Tx) -> Result<()> {
         // create a contract ins(body)tance
         let wallet = EthereumWallet::from(self.signer.clone());
         let provider = ProviderBuilder::new()
@@ -161,6 +161,12 @@ impl ComputeManagerClient {
         Ok(txs)
     }
 
+    fn read_tx_with_key(&self, tx_key_hex: String) -> Result<Tx> {
+        let tx_full_key = hex::decode(tx_key_hex)?;
+        let tx = self.db.get::<Tx>(tx_full_key)?;
+        Ok(tx)
+    }
+
     pub async fn run(&self) -> Result<()> {
         // Sync up the db first
         self.db.refresh()?;
@@ -170,6 +176,11 @@ impl ComputeManagerClient {
             info!("Posted TX on chain: {:?}", tx.hash());
         }
         Ok(())
+    }
+
+    pub async fn submit_openranx_tx_with_key(&self, tx_key_hex: String) -> Result<()> {
+        let tx = self.read_tx_with_key(tx_key_hex)?;
+        self.submit_openrank_tx(tx).await
     }
 }
 
