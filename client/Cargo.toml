@@ -8,10 +8,13 @@ authors = [
 edition = "2021"
 license = "MIT"
 
-[dependencies]
-openrank-common = { git = "https://github.com/openrankprotocol/openrank.git", package = "openrank-common" }
+[dependencies.openrank-common]
+git = "https://github.com/openrankprotocol/openrank.git"
+rev = "2841b8cc0e25d4225f9cbbbecde7006dc7200bae"
+package = "openrank-common"
 
-tokio = { version = "1.38", default-features = false, features = ["full"]}
+[dependencies]
+tokio = { version = "1.38", default-features = false, features = ["full"] }
 tracing = "0.1.37"
 alloy = { version = "0.3", features = ["full", "node-bindings"] }
 alloy-rlp = "0.3.5"
