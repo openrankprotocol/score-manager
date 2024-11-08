@@ -7,4 +7,4 @@
 - [ ] Link related issues
 - [ ] Make it draft if it is still WIP
 - [ ] Write unit tests for your code if possible
-- [ ] Do manual tests and make sure your changes don't break the rest of the codebase
+- [ ] Do manual testing and make sure your changes don't break the rest of the codebase
