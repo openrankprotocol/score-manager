@@ -10,7 +10,7 @@ license = "MIT"
 
 [dependencies.openrank-common]
 git = "https://github.com/openrankprotocol/openrank.git"
-rev = "2841b8cc0e25d4225f9cbbbecde7006dc7200bae"
+rev = "32e0fe732f61f52af00761ee5c70dbeeb79ccc7e"
 package = "openrank-common"
 
 [dependencies]
