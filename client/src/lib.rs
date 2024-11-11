@@ -82,7 +82,7 @@ impl ComputeManagerClient {
         // check if tx already exists
         let is_tx_exists = match tx.body() {
             Body::ComputeCommitment(_) | Body::ComputeVerification(_) => {
-                contract.hasTx(tx.hash().0.into()).call().await?._0
+                contract.hasTx(tx.hash().inner().into()).call().await?._0
             }
             _ => true,
         };
@@ -94,13 +94,13 @@ impl ComputeManagerClient {
         let _result_hash = match tx.body() {
             Body::ComputeCommitment(body) => {
                 let compute_commitment = body;
-                let compute_assignment_tx_hash = compute_commitment.assignment_tx_hash.0.into();
-                let compute_commitment_tx_hash = tx.hash().0.into();
-                let compute_root_hash = compute_commitment.compute_root_hash.0.into();
+                let compute_assignment_tx_hash = compute_commitment.assignment_tx_hash().inner().into();
+                let compute_commitment_tx_hash = tx.hash().inner().into();
+                let compute_root_hash = compute_commitment.compute_root_hash().inner().into();
                 let sig = Signature {
-                    s: tx.signature().s.into(),
-                    r: tx.signature().r.into(),
-                    r_id: tx.signature().r_id(),
+                    s: tx.signature().s().into(),
+                    r: tx.signature().r().into(),
+                    r_id: *tx.signature().r_id(),
                 };
                 contract
                     .submitComputeCommitment(
@@ -116,12 +116,12 @@ impl ComputeManagerClient {
             }
             Body::ComputeVerification(body) => {
                 let compute_verification = body;
-                let compute_verification_tx_hash = tx.hash().0.into();
-                let compute_assignment_tx_hash = compute_verification.assignment_tx_hash.0.into();
+                let compute_verification_tx_hash = tx.hash().inner().into();
+                let compute_assignment_tx_hash = compute_verification.assignment_tx_hash().inner().into();
                 let sig = Signature {
-                    s: tx.signature().s.into(),
-                    r: tx.signature().r.into(),
-                    r_id: tx.signature().r_id(),
+                    s: tx.signature().s().into(),
+                    r: tx.signature().r().into(),
+                    r_id: *tx.signature().r_id(),
                 };
                 contract
                     .submitComputeVerification(
