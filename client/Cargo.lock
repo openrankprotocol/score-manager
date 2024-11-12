@@ -1953,6 +1953,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "getset"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f636605b743120a8d32ed92fc27b6cde1a769f8f936c065151eb66f88ded513c"
+dependencies = [
+ "proc-macro-error2",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.85",
+]
+
+[[package]]
 name = "ghash"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3344,13 +3356,14 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
 name = "openrank-common"
-version = "0.1.1"
-source = "git+https://github.com/openrankprotocol/openrank.git?rev=2841b8cc0e25d4225f9cbbbecde7006dc7200bae#2841b8cc0e25d4225f9cbbbecde7006dc7200bae"
+version = "0.1.2"
+source = "git+https://github.com/openrankprotocol/openrank.git?rev=32e0fe732f61f52af00761ee5c70dbeeb79ccc7e#32e0fe732f61f52af00761ee5c70dbeeb79ccc7e"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
  "alloy-rlp-derive",
  "directories",
+ "getset",
  "hex",
  "k256",
  "libp2p",
