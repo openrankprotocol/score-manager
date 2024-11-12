@@ -151,13 +151,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_submit_openrank_tx() -> Result<()> {
-        let test_mnemonic = String::from(
-            "work man father plunge mystery proud hollow address reunion sauce theory bonus",
-        );
-
         // Spin up a local Anvil node.
         // Ensure `anvil` is available in $PATH.
-        let anvil = Anvil::new().mnemonic(&test_mnemonic).try_spawn()?;
+        let anvil = Anvil::new().try_spawn()?;
 
         // Set up signer from the first default Anvil account (Alice).
         let signer: PrivateKeySigner = anvil.keys()[0].clone().into();
