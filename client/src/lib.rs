@@ -1,5 +1,6 @@
 mod sol;
 
+use jsonrpsee::{core::client::ClientT, http_client::HttpClient};
 use serde::{Deserialize, Serialize};
 use std::{error::Error, str::FromStr};
 
@@ -16,21 +17,23 @@ use eyre::Result;
 
 use openrank_common::{
     config,
-    tx::{Body, Tx},
+    tx::{Body, Tx, TxHash},
 };
 use sol::ComputeManager::{self, Signature};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub contract_address: String,
-    pub rpc_url: String,
+    pub chain_rpc_url: String,
     pub chain_id: u64,
+    pub openrank_rpc_url: String,
 }
 
 pub struct ComputeManagerClient {
     contract_address: Address,
-    rpc_url: Url,
+    chain_rpc_url: Url,
     signer: LocalSigner<SigningKey>,
+    openrank_rpc_url: String,
 }
 
 impl ComputeManagerClient {
@@ -44,18 +47,30 @@ impl ComputeManagerClient {
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
 
         let contract_address = Address::from_str(&config.contract_address)?;
-        let rpc_url = Url::parse(&config.rpc_url)?;
+        let chain_rpc_url = Url::parse(&config.chain_rpc_url)?;
         let mut signer: LocalSigner<SigningKey> = secret_key.into();
         signer.set_chain_id(Some(config.chain_id));
-        let client = Self::new(contract_address, rpc_url, signer);
+
+        let client = Self::new(
+            contract_address,
+            chain_rpc_url,
+            signer,
+            config.openrank_rpc_url,
+        );
         Ok(client)
     }
 
-    pub fn new(contract_address: Address, rpc_url: Url, signer: LocalSigner<SigningKey>) -> Self {
+    pub fn new(
+        contract_address: Address,
+        chain_rpc_url: Url,
+        signer: LocalSigner<SigningKey>,
+        openrank_rpc_url: String,
+    ) -> Self {
         Self {
             contract_address,
-            rpc_url,
+            chain_rpc_url,
             signer,
+            openrank_rpc_url,
         }
     }
 
@@ -65,7 +80,7 @@ impl ComputeManagerClient {
         let provider = ProviderBuilder::new()
             .with_recommended_fillers()
             .wallet(wallet)
-            .on_http(self.rpc_url.clone());
+            .on_http(self.chain_rpc_url.clone());
         let contract = ComputeManager::new(self.contract_address, provider);
 
         // check if tx already exists
@@ -130,6 +145,32 @@ impl ComputeManagerClient {
 
         Ok(())
     }
+
+    /// Fetch multiple openrank txs
+    pub async fn fetch_openrank_txs(&self, txs_arg: Vec<(String, TxHash)>) -> Result<Vec<Tx>> {
+        // Creates a new client
+        let client = HttpClient::builder().build(self.openrank_rpc_url.as_str())?;
+
+        // fetch txs
+        let txs = client.request("sequencer_get_txs", vec![txs_arg]).await?;
+
+        Ok(txs)
+    }
+
+    /// Fetch single openrank tx
+    pub async fn fetch_openrank_tx(&self, prefix: String, tx_hash: String) -> Result<Vec<Tx>> {
+        // Creates a new client
+        let client = HttpClient::builder().build(self.openrank_rpc_url.as_str())?;
+
+        // fetch tx
+        let tx_hash_bytes = hex::decode(tx_hash)?;
+        let tx_hash = TxHash::from_bytes(tx_hash_bytes);
+        let tx = client
+            .request("sequencer_get_tx", (prefix, tx_hash))
+            .await?;
+
+        Ok(tx)
+    }
 }
 
 #[cfg(test)]
@@ -160,11 +201,11 @@ mod tests {
         let wallet = EthereumWallet::from(signer.clone());
 
         // Create a provider with the wallet.
-        let rpc_url: Url = anvil.endpoint().parse()?;
+        let chain_rpc_url: Url = anvil.endpoint().parse()?;
         let provider = ProviderBuilder::new()
             .with_recommended_fillers()
             .wallet(wallet)
-            .on_http(rpc_url.clone());
+            .on_http(chain_rpc_url.clone());
 
         // Deploy the `ComputeManager` contract.
         let submitters = vec![signer.address()];
@@ -174,7 +215,12 @@ mod tests {
 
         // Create a contract instance.
         let contract_address = *contract.address();
-        let client = ComputeManagerClient::new(contract_address, rpc_url, signer);
+        let client = ComputeManagerClient::new(
+            contract_address,
+            chain_rpc_url,
+            signer,
+            "mock_openrank_rpc".to_string(),
+        );
 
         // Try to submit "ComputeRequest" TX
         client
