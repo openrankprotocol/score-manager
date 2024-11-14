@@ -158,13 +158,11 @@ impl ComputeManagerClient {
     }
 
     /// Fetch single openrank tx
-    pub async fn fetch_openrank_tx(&self, prefix: String, tx_hash: String) -> Result<Vec<Tx>> {
+    pub async fn fetch_openrank_tx(&self, prefix: String, tx_hash: TxHash) -> Result<Tx> {
         // Creates a new client
         let client = HttpClient::builder().build(self.openrank_rpc_url.as_str())?;
 
         // fetch tx
-        let tx_hash_bytes = hex::decode(tx_hash)?;
-        let tx_hash = TxHash::from_bytes(tx_hash_bytes);
         let tx = client
             .request("sequencer_get_tx", (prefix, tx_hash))
             .await?;
