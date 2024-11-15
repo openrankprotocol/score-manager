@@ -187,7 +187,7 @@ impl ComputeManagerClient {
         Ok(compute_result)
     }
 
-    async fn submit_compute_result_txs(&mut self) -> Result<(), Box<dyn Error>> {
+    async fn submit_compute_result_txs(&self) -> Result<(), Box<dyn Error>> {
         // // fetch the last `seq_number`
         // let last_count = self.target_db
         //     .load_last_processed_key("jobs").await
@@ -229,7 +229,7 @@ impl ComputeManagerClient {
     }
 
     /// Submit the openrank TX into on-chain smart contract, in periodic interval
-    pub async fn start_inverval_submit(&mut self) -> Result<(), Box<dyn Error>> {
+    pub async fn start_interval_submit(&self) -> Result<(), Box<dyn Error>> {
         let mut interval = tokio::time::interval(Duration::from_secs(INTERVAL_SECONDS));
 
         loop {
