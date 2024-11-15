@@ -3743,6 +3743,7 @@ dependencies = [
  "eyre",
  "hex",
  "jsonrpsee",
+ "log",
  "openrank-common",
  "serde",
  "serde_json",

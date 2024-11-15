@@ -1,8 +1,9 @@
 mod sol;
 
 use jsonrpsee::{core::client::ClientT, http_client::HttpClient};
+use log::info;
 use serde::{Deserialize, Serialize};
-use std::{error::Error, str::FromStr};
+use std::{error::Error, str::FromStr, time::Duration};
 
 use alloy::{
     hex,
@@ -17,9 +18,11 @@ use eyre::Result;
 
 use openrank_common::{
     config,
-    tx::{Body, Tx, TxHash},
+    tx::{compute, Body, Tx, TxHash},
 };
 use sol::ComputeManager::{self, Signature};
+
+const INTERVAL_SECONDS: u64 = 10;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -74,6 +77,7 @@ impl ComputeManagerClient {
         }
     }
 
+    /// Submit the single openrank TX to on-chain smart contract
     pub async fn submit_openrank_tx(&self, tx: Tx) -> Result<()> {
         // create a contract instance
         let wallet = EthereumWallet::from(self.signer.clone());
@@ -146,7 +150,7 @@ impl ComputeManagerClient {
         Ok(())
     }
 
-    /// Fetch multiple openrank txs
+    /// Fetch multiple openrank TXs
     pub async fn fetch_openrank_txs(&self, txs_arg: Vec<(String, TxHash)>) -> Result<Vec<Tx>> {
         // Creates a new client
         let client = HttpClient::builder().build(self.openrank_rpc_url.as_str())?;
@@ -157,7 +161,7 @@ impl ComputeManagerClient {
         Ok(txs)
     }
 
-    /// Fetch single openrank tx
+    /// Fetch single openrank TX
     pub async fn fetch_openrank_tx(&self, prefix: String, tx_hash: TxHash) -> Result<Tx> {
         // Creates a new client
         let client = HttpClient::builder().build(self.openrank_rpc_url.as_str())?;
@@ -168,6 +172,71 @@ impl ComputeManagerClient {
             .await?;
 
         Ok(tx)
+    }
+
+    /// Fetch single openrank compute result
+    async fn fetch_openrank_compute_result(&self, seq_number: u64) -> Result<compute::Result> {
+        // Creates a new client
+        let client = HttpClient::builder().build(self.openrank_rpc_url.as_str())?;
+
+        // fetch compute result
+        let compute_result = client
+            .request("sequencer_get_compute_result", vec![seq_number])
+            .await?;
+
+        Ok(compute_result)
+    }
+
+    async fn submit_compute_result_txs(&mut self) -> Result<(), Box<dyn Error>> {
+        // // fetch the last `seq_number`
+        // let last_count = self.target_db
+        //     .load_last_processed_key("jobs").await
+        //     .expect("Failed to load last processed key")
+        //     .unwrap_or(0);
+        let last_seq_number = 0;
+
+        let mut curr_seq_number = last_seq_number;
+
+        log::info!("Fetching compute result, seq_number: {:?}", curr_seq_number);
+        loop {
+            // fetch compute result with `seq_number`
+            let compute_result = self
+                .fetch_openrank_compute_result(curr_seq_number.try_into().unwrap())
+                .await?;
+
+            // prepare args for fetching txs
+            let mut txs_args = vec![
+                ("compute_commitment", compute_result.compute_commitment_tx_hash().clone()),
+            ];
+            for tx_hash in compute_result.compute_verification_tx_hashes() {
+                txs_args.push(("compute_verification", tx_hash.clone()));
+            }
+            
+            // fetch & submit txs, with args
+            for (tx_type, tx_hash) in txs_args {
+                let tx = self.fetch_openrank_tx(tx_type.to_string(), tx_hash).await?;
+                self.submit_openrank_tx(tx).await?;
+            }
+
+            // increment & save the `seq_number`
+            curr_seq_number += 1;
+            if last_seq_number < curr_seq_number {
+                // self.save_last_processed_key("jobs", curr_seq_number).await;
+                //
+                // save last processed key - `curr_seq_number`
+            }
+        }
+    }
+
+    /// Submit the openrank TX into on-chain smart contract, in periodic interval
+    pub async fn start_inverval_submit(&mut self) -> Result<(), Box<dyn Error>> {
+        let mut interval = tokio::time::interval(Duration::from_secs(INTERVAL_SECONDS));
+
+        loop {
+            interval.tick().await;
+            info!("Running periodic submission...");
+            self.submit_compute_result_txs().await?;
+        }
     }
 }
 
