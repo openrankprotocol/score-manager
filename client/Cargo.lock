@@ -3745,6 +3745,7 @@ dependencies = [
  "jsonrpsee",
  "log",
  "openrank-common",
+ "rocksdb",
  "serde",
  "serde_json",
  "tokio",

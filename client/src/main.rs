@@ -43,7 +43,7 @@ async fn post_tx_on_chain(arg: String) -> Result<(), Box<dyn Error>> {
 }
 
 /// 1. Creates a new `Client`.
-/// 2. Start interval submission process. 
+/// 2. Start interval submission process.
 async fn start_interval_submit() -> Result<(), Box<dyn Error>> {
     // Creates a new client
     let smc = client::ComputeManagerClient::init()?;
@@ -60,10 +60,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     match cli.method {
         Method::PostTxOnChain { tx_id } => {
             post_tx_on_chain(tx_id).await?;
-        },
+        }
         Method::StartIntervalSubmit => {
             start_interval_submit().await?;
-        },
+        }
     }
     Ok(())
 }

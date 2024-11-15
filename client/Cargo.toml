@@ -27,3 +27,4 @@ jsonrpsee = { version = "0.24.7", features = ["client"] }
 clap = { version = "4.5.21", features = ["derive"] }
 hex = "0.4.3"
 log = "0.4.22"
+rocksdb = "0.22.0"

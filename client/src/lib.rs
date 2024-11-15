@@ -2,6 +2,7 @@ mod sol;
 
 use jsonrpsee::{core::client::ClientT, http_client::HttpClient};
 use log::info;
+use rocksdb::DB;
 use serde::{Deserialize, Serialize};
 use std::{error::Error, str::FromStr, time::Duration};
 
@@ -21,6 +22,9 @@ use openrank_common::{
     tx::{compute, Body, Tx, TxHash},
 };
 use sol::ComputeManager::{self, Signature};
+
+const DB_PATH: &str = "seq_number_db";
+const COUNTER_KEY: &str = "seq_number";
 
 const INTERVAL_SECONDS: u64 = 10;
 
@@ -188,12 +192,13 @@ impl ComputeManagerClient {
     }
 
     async fn submit_compute_result_txs(&self) -> Result<(), Box<dyn Error>> {
-        // // fetch the last `seq_number`
-        // let last_count = self.target_db
-        //     .load_last_processed_key("jobs").await
-        //     .expect("Failed to load last processed key")
-        //     .unwrap_or(0);
-        let last_seq_number = 0;
+        // fetch the last `seq_number`
+        let db = DB::open_default(DB_PATH)?;
+        let last_seq_number = db
+            .get(COUNTER_KEY)?
+            .and_then(|v| String::from_utf8(v).ok())
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(0);
 
         let mut curr_seq_number = last_seq_number;
 
@@ -205,13 +210,14 @@ impl ComputeManagerClient {
                 .await?;
 
             // prepare args for fetching txs
-            let mut txs_args = vec![
-                ("compute_commitment", compute_result.compute_commitment_tx_hash().clone()),
-            ];
+            let mut txs_args = vec![(
+                "compute_commitment",
+                compute_result.compute_commitment_tx_hash().clone(),
+            )];
             for tx_hash in compute_result.compute_verification_tx_hashes() {
                 txs_args.push(("compute_verification", tx_hash.clone()));
             }
-            
+
             // fetch & submit txs, with args
             for (tx_type, tx_hash) in txs_args {
                 let tx = self.fetch_openrank_tx(tx_type.to_string(), tx_hash).await?;
@@ -220,11 +226,9 @@ impl ComputeManagerClient {
 
             // increment & save the `seq_number`
             curr_seq_number += 1;
-            if last_seq_number < curr_seq_number {
-                // self.save_last_processed_key("jobs", curr_seq_number).await;
-                //
-                // save last processed key - `curr_seq_number`
-            }
+
+            let seq_number_str = curr_seq_number.to_string();
+            db.put(COUNTER_KEY, seq_number_str)?;
         }
     }
 
