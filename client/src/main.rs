@@ -55,6 +55,11 @@ async fn start_interval_submit() -> Result<(), Box<dyn Error>> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    // Set up logging
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Info)
+        .init();
+
     let cli = Args::parse();
 
     match cli.method {
