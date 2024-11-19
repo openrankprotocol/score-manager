@@ -209,12 +209,10 @@ impl ComputeManagerClient {
 
         let mut curr_seq_number = last_seq_number;
 
-        log::info!("Fetching compute result, seq_number: {:?}", curr_seq_number);
+        info!("Fetching compute result, seq_number: {:?}", curr_seq_number);
         loop {
             // fetch compute result with `seq_number`
-            let compute_result = self
-                .fetch_openrank_compute_result(curr_seq_number.try_into().unwrap())
-                .await?;
+            let compute_result = self.fetch_openrank_compute_result(curr_seq_number).await?;
 
             // prepare args for fetching txs
             let mut txs_args = vec![(
