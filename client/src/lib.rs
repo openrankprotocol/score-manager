@@ -23,10 +23,7 @@ use openrank_common::{
 };
 use sol::ComputeManager::{self, Signature};
 
-const DB_PATH: &str = "seq_number_db";
 const COUNTER_KEY: &str = "seq_number";
-
-const INTERVAL_SECONDS: u64 = 10;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -34,6 +31,8 @@ pub struct Config {
     pub chain_rpc_url: String,
     pub chain_id: u64,
     pub openrank_rpc_url: String,
+    pub counter_db_path: String,
+    pub interval_seconds: u64,
 }
 
 pub struct ComputeManagerClient {
@@ -41,6 +40,8 @@ pub struct ComputeManagerClient {
     chain_rpc_url: Url,
     signer: LocalSigner<SigningKey>,
     openrank_rpc_url: String,
+    counter_db_path: String,
+    interval_seconds: u64,
 }
 
 impl ComputeManagerClient {
@@ -63,6 +64,8 @@ impl ComputeManagerClient {
             chain_rpc_url,
             signer,
             config.openrank_rpc_url,
+            config.counter_db_path,
+            config.interval_seconds,
         );
         Ok(client)
     }
@@ -72,12 +75,16 @@ impl ComputeManagerClient {
         chain_rpc_url: Url,
         signer: LocalSigner<SigningKey>,
         openrank_rpc_url: String,
+        counter_db_path: String,
+        interval_seconds: u64,
     ) -> Self {
         Self {
             contract_address,
             chain_rpc_url,
             signer,
             openrank_rpc_url,
+            counter_db_path,
+            interval_seconds,
         }
     }
 
@@ -193,7 +200,7 @@ impl ComputeManagerClient {
 
     async fn submit_compute_result_txs(&self) -> Result<(), Box<dyn Error>> {
         // fetch the last `seq_number`
-        let db = DB::open_default(DB_PATH)?;
+        let db = DB::open_default(&self.counter_db_path)?;
         let last_seq_number = db
             .get(COUNTER_KEY)?
             .and_then(|v| String::from_utf8(v).ok())
@@ -234,7 +241,7 @@ impl ComputeManagerClient {
 
     /// Submit the openrank TX into on-chain smart contract, in periodic interval
     pub async fn start_interval_submit(&self) -> Result<(), Box<dyn Error>> {
-        let mut interval = tokio::time::interval(Duration::from_secs(INTERVAL_SECONDS));
+        let mut interval = tokio::time::interval(Duration::from_secs(self.interval_seconds));
 
         loop {
             interval.tick().await;
@@ -291,6 +298,8 @@ mod tests {
             chain_rpc_url,
             signer,
             "mock_openrank_rpc".to_string(),
+            "mock_counter_db_path".to_string(),
+            0, // mock interval
         );
 
         // Try to submit "ComputeRequest" TX

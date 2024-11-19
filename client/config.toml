@@ -1,4 +1,8 @@
 contract_address = "0x5d010a095c3d442490100d57f01ad203ece65a61"
 chain_rpc_url = "https://rpc-amoy.polygon.technology/" # polygon amoy testnet
 chain_id = 80002
+
 openrank_rpc_url="http://127.0.0.1:60000"
+
+counter_db_path = "seq_number_db"
+interval_seconds = 10
