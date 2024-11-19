@@ -1,8 +1,10 @@
 mod sol;
 
 use jsonrpsee::{core::client::ClientT, http_client::HttpClient};
+use log::info;
+use rocksdb::DB;
 use serde::{Deserialize, Serialize};
-use std::{error::Error, str::FromStr};
+use std::{error::Error, str::FromStr, time::Duration};
 
 use alloy::{
     hex,
@@ -17,9 +19,11 @@ use eyre::Result;
 
 use openrank_common::{
     config,
-    tx::{Body, Tx, TxHash},
+    tx::{compute, Body, Tx, TxHash},
 };
 use sol::ComputeManager::{self, Signature};
+
+const COUNTER_KEY: &str = "seq_number";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -27,6 +31,8 @@ pub struct Config {
     pub chain_rpc_url: String,
     pub chain_id: u64,
     pub openrank_rpc_url: String,
+    pub counter_db_path: String,
+    pub interval_seconds: u64,
 }
 
 pub struct ComputeManagerClient {
@@ -34,6 +40,8 @@ pub struct ComputeManagerClient {
     chain_rpc_url: Url,
     signer: LocalSigner<SigningKey>,
     openrank_rpc_url: String,
+    counter_db_path: String,
+    interval_seconds: u64,
 }
 
 impl ComputeManagerClient {
@@ -56,6 +64,8 @@ impl ComputeManagerClient {
             chain_rpc_url,
             signer,
             config.openrank_rpc_url,
+            config.counter_db_path,
+            config.interval_seconds,
         );
         Ok(client)
     }
@@ -65,15 +75,20 @@ impl ComputeManagerClient {
         chain_rpc_url: Url,
         signer: LocalSigner<SigningKey>,
         openrank_rpc_url: String,
+        counter_db_path: String,
+        interval_seconds: u64,
     ) -> Self {
         Self {
             contract_address,
             chain_rpc_url,
             signer,
             openrank_rpc_url,
+            counter_db_path,
+            interval_seconds,
         }
     }
 
+    /// Submit the single openrank TX to on-chain smart contract
     pub async fn submit_openrank_tx(&self, tx: Tx) -> Result<()> {
         // create a contract instance
         let wallet = EthereumWallet::from(self.signer.clone());
@@ -146,7 +161,7 @@ impl ComputeManagerClient {
         Ok(())
     }
 
-    /// Fetch multiple openrank txs
+    /// Fetch multiple openrank TXs
     pub async fn fetch_openrank_txs(&self, txs_arg: Vec<(String, TxHash)>) -> Result<Vec<Tx>> {
         // Creates a new client
         let client = HttpClient::builder().build(self.openrank_rpc_url.as_str())?;
@@ -157,7 +172,7 @@ impl ComputeManagerClient {
         Ok(txs)
     }
 
-    /// Fetch single openrank tx
+    /// Fetch single openrank TX
     pub async fn fetch_openrank_tx(&self, prefix: String, tx_hash: TxHash) -> Result<Tx> {
         // Creates a new client
         let client = HttpClient::builder().build(self.openrank_rpc_url.as_str())?;
@@ -168,6 +183,69 @@ impl ComputeManagerClient {
             .await?;
 
         Ok(tx)
+    }
+
+    /// Fetch single openrank compute result
+    async fn fetch_openrank_compute_result(&self, seq_number: u64) -> Result<compute::Result> {
+        // Creates a new client
+        let client = HttpClient::builder().build(self.openrank_rpc_url.as_str())?;
+
+        // fetch compute result
+        let compute_result = client
+            .request("sequencer_get_compute_result", vec![seq_number])
+            .await?;
+
+        Ok(compute_result)
+    }
+
+    async fn submit_compute_result_txs(&self) -> Result<(), Box<dyn Error>> {
+        // fetch the last `seq_number`
+        let db = DB::open_default(&self.counter_db_path)?;
+        let last_seq_number = db
+            .get(COUNTER_KEY)?
+            .and_then(|v| String::from_utf8(v).ok())
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(0);
+
+        let mut curr_seq_number = last_seq_number;
+
+        info!("Fetching compute result, seq_number: {:?}", curr_seq_number);
+        loop {
+            // fetch compute result with `seq_number`
+            let compute_result = self.fetch_openrank_compute_result(curr_seq_number).await?;
+
+            // prepare args for fetching txs
+            let mut txs_args = vec![(
+                "compute_commitment",
+                compute_result.compute_commitment_tx_hash().clone(),
+            )];
+            for tx_hash in compute_result.compute_verification_tx_hashes() {
+                txs_args.push(("compute_verification", tx_hash.clone()));
+            }
+
+            // fetch & submit txs, with args
+            for (tx_type, tx_hash) in txs_args {
+                let tx = self.fetch_openrank_tx(tx_type.to_string(), tx_hash).await?;
+                self.submit_openrank_tx(tx).await?;
+            }
+
+            // increment & save the `seq_number`
+            curr_seq_number += 1;
+
+            let seq_number_str = curr_seq_number.to_string();
+            db.put(COUNTER_KEY, seq_number_str)?;
+        }
+    }
+
+    /// Submit the openrank TX into on-chain smart contract, in periodic interval
+    pub async fn start_interval_submit(&self) -> Result<(), Box<dyn Error>> {
+        let mut interval = tokio::time::interval(Duration::from_secs(self.interval_seconds));
+
+        loop {
+            interval.tick().await;
+            info!("Running periodic submission...");
+            self.submit_compute_result_txs().await?;
+        }
     }
 }
 
@@ -218,6 +296,8 @@ mod tests {
             chain_rpc_url,
             signer,
             "mock_openrank_rpc".to_string(),
+            "mock_counter_db_path".to_string(),
+            0, // mock interval
         );
 
         // Try to submit "ComputeRequest" TX
