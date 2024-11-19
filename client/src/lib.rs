@@ -7,7 +7,7 @@ use std::{error::Error, str::FromStr};
 use alloy::{
     hex,
     network::EthereumWallet,
-    primitives::Address,
+    primitives::{Address, FixedBytes},
     providers::ProviderBuilder,
     signers::{k256::ecdsa::SigningKey, local::LocalSigner, Signer},
     transports::http::reqwest::Url,
@@ -72,6 +72,31 @@ impl ComputeManagerClient {
             signer,
             openrank_rpc_url,
         }
+    }
+
+    pub async fn get_signer(&self, tx: Tx) -> Result<FixedBytes<32>> {
+        let wallet = EthereumWallet::from(self.signer.clone());
+        let provider = ProviderBuilder::new()
+            .with_recommended_fillers()
+            .wallet(wallet)
+            .on_http(self.chain_rpc_url.clone());
+        let contract = ComputeManager::new(self.contract_address, provider);
+
+        let tx_hash = tx.hash().inner().into();
+        let sig = Signature {
+            s: tx.signature().s().into(),
+            r: tx.signature().r().into(),
+            r_id: *tx.signature().r_id(),
+        };
+
+        let res = contract
+            .getSigner(tx_hash, sig)
+            .send()
+            .await?
+            .watch()
+            .await?;
+
+        Ok(res)
     }
 
     pub async fn submit_openrank_tx(&self, tx: Tx) -> Result<()> {

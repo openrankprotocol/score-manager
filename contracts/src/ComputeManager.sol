@@ -22,13 +22,20 @@ contract ComputeManager {
     event ComputeCommitted(bytes32 txHash, address indexed computer);
     event ComputeVerified(bytes32 txHash, address indexed verifier);
 
-    modifier onlySubmitter {
-        require(submitters[msg.sender], "Only submitters can call this function");
+    modifier onlySubmitter() {
+        require(
+            submitters[msg.sender],
+            "Only submitters can call this function"
+        );
         _;
     }
 
     // Initialize the contract with whitelisted addresses
-    constructor(address[] memory _submitters, address[] memory _computers, address[] memory _verifiers) {
+    constructor(
+        address[] memory _submitters,
+        address[] memory _computers,
+        address[] memory _verifiers
+    ) {
         for (uint256 i = 0; i < _submitters.length; i++) {
             submitters[_submitters[i]] = true;
         }
@@ -80,6 +87,14 @@ contract ComputeManager {
         hasTx[computeVerifyTxHash] = true;
 
         emit ComputeVerified(computeVerifyTxHash, signer);
+    }
+
+    function getSigner(
+        bytes32 messageHash,
+        Signature calldata signature
+    ) external view onlySubmitter returns (address) {
+        address signer = recoverSigner(messageHash, signature);
+        return signer;
     }
 
     // Recover signer from the provided hash and signature
