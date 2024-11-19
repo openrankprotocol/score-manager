@@ -8,6 +8,10 @@ use std::error::Error;
 enum Method {
     /// Post Openrank TX into on-chain smart contract
     PostTxOnChain { tx_id: String },
+
+    /// Post Openrank TXs into on-chain smart contract, in periodic interval
+    StartIntervalSubmit,
+
     /// Get signer
     GetSigner { tx_id: String },
 }
@@ -61,13 +65,32 @@ async fn get_signer(arg: String) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// 1. Creates a new `Client`.
+/// 2. Start interval submission process.
+async fn start_interval_submit() -> Result<(), Box<dyn Error>> {
+    // Creates a new client
+    let smc = client::ComputeManagerClient::init()?;
+
+    smc.start_interval_submit().await?;
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    // Set up logging
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Info)
+        .init();
+
     let cli = Args::parse();
 
     match cli.method {
         Method::PostTxOnChain { tx_id } => {
             post_tx_on_chain(tx_id).await?;
+        }
+        Method::StartIntervalSubmit => {
+            start_interval_submit().await?;
         }
         Method::GetSigner { tx_id } => {
             get_signer(tx_id).await?;
