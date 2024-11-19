@@ -92,7 +92,7 @@ contract ComputeManager {
     function getSigner(
         bytes32 messageHash,
         Signature calldata signature
-    ) external view onlySubmitter returns (address) {
+    ) public pure returns (address) {
         address signer = recoverSigner(messageHash, signature);
         return signer;
     }

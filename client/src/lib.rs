@@ -7,7 +7,7 @@ use std::{error::Error, str::FromStr};
 use alloy::{
     hex,
     network::EthereumWallet,
-    primitives::{Address, FixedBytes},
+    primitives::Address,
     providers::ProviderBuilder,
     signers::{k256::ecdsa::SigningKey, local::LocalSigner, Signer},
     transports::http::reqwest::Url,
@@ -74,7 +74,7 @@ impl ComputeManagerClient {
         }
     }
 
-    pub async fn get_signer(&self, tx: Tx) -> Result<FixedBytes<32>> {
+    pub async fn get_signer(&self, tx: Tx) -> Result<Address> {
         let wallet = EthereumWallet::from(self.signer.clone());
         let provider = ProviderBuilder::new()
             .with_recommended_fillers()
@@ -89,12 +89,7 @@ impl ComputeManagerClient {
             r_id: *tx.signature().r_id(),
         };
 
-        let res = contract
-            .getSigner(tx_hash, sig)
-            .send()
-            .await?
-            .watch()
-            .await?;
+        let res = contract.getSigner(tx_hash, sig).call().await?._0;
 
         Ok(res)
     }
