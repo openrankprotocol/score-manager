@@ -109,3 +109,5 @@ fabric.properties
 flush_db.sh
 
 seq_number_db
+
+cache
