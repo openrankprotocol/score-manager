@@ -12,13 +12,19 @@
    forge build
    ```
 
-3. **(Optional) Configure Environment**
+3. **Configure Environment**
    - Create a `.env` file by copying `.env.example` and add your private key.  
      This key is used for submitting the deployment transaction to the blockchain.
+     If you deploy contract on `anvil` network, you should use the private key from `anvil` test wallet.
+     If you deploy contract on other testnet(e.g. Amoy Polygon testnet), you should use the private key of wallet you use for development.
 
-4. **(Optional) Update Addresses**
+4. **Update Addresses**
    - Modify the addresses of `submitters`, `computers`, and `verifiers` in `DeployComputeManager.s.sol` if needed.
      Especially, you should check addresses depending on which network you want to deploy contract.
+     If you deploy contract on `anvil` network, you should use the local openrank `computer` & `verifier` address.
+     Plus, you should use the `anvil` test wallet address as `submitter` one.
+     If you deploy contract on other testnet(e.g. Amoy Polygon tesnet), you should use openrank devnet `computer` & `verifier` address.
+     Also, you should use the wallet address which is used as smart contract client tx submission, as `submitter` one.
 
 5. **Simulate Deployment**
    ```sh
