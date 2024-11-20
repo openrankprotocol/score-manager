@@ -18,6 +18,7 @@
 
 4. **(Optional) Update Addresses**
    - Modify the addresses of `submitters`, `computers`, and `verifiers` in `DeployComputeManager.s.sol` if needed.
+     Especially, you should check addresses depending on which network you want to deploy contract.
 
 5. **Simulate Deployment**
    ```sh
@@ -26,11 +27,18 @@
    - This simulation provides deployment guarantees and gas cost estimates.  
    - **Note**: Ensure the `.env` file is present.
 
-6. **Deploy to Polygon Testnet**
+6. **Deploy to Testnet/Localnet**
    - To deploy on a different network (e.g., Ethereum mainnet), adjust the `rpc-url` accordingly.
    ```sh
    forge script script/DeployComputeManager.s.sol --rpc-url https://rpc-amoy.polygon.technology/ --broadcast --optimize --optimizer-runs 4000
    ```
+
+   To deploy on anvil local network, use this one.
+   ```sh
+   forge script script/DeployComputeManager.s.sol --rpc-url http://localhost:8545 --broadcast --optimize --optimizer-runs 4000
+   ```
+
+   **NOTE**: You should double-check the `submitters`, `computers` and `verifiers` addresses.
 
 7. **Update Configuration**
    - Copy the deployed contract address into `client/config.toml` for use in the smart contract client.

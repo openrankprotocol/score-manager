@@ -15,7 +15,7 @@ contract ComputeManagerScript is Script {
 
         address[] memory submitters = new address[](3);
         submitters[0] = address(bytes20(bytes(hex"b79aafc95c8866e65ed51a7856e75587feb481ff")));
-        submitters[1] = address(bytes20(bytes(hex"4d40f98096410aa4235292343cc5fa559afcc780")));
+        submitters[1] = address(bytes20(bytes(hex"f39Fd6e51aad88F6F4ce6aB8827279cffFb92266")));
         submitters[2] = address(bytes20(bytes(hex"4A2C2501d26ff3aC30bd0AAbfb48471B411852A1")));
 
         address[] memory computers = new address[](2);
