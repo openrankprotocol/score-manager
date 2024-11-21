@@ -14,16 +14,15 @@
 
 3. **Configure Environment**
    - Create a `.env` file by copying `.env.example` and add your private key.  
-     This key is used for submitting the **deployment** transaction to the blockchain.
-     If you deploy contract on `anvil` localnet, you should use the private key of `anvil` test wallet.
-     If you deploy contract on other testnet(e.g. Amoy Polygon testnet), you should use the private key of wallet you use for development.
+     This key is used for submitting the **deployment** transaction to the blockchain.  
+     If you deploy contract on `anvil` localnet, you should use the private key of `anvil` test wallet.  
+     If you deploy contract on other testnet(e.g. Amoy Polygon testnet), you should use the private key of wallet you use for development.  
      Current `.env.example` contains the key of `anvil` 1st test wallet.
 
-   - Modify the addresses of `SUBMITTER`, `COMPUTER`, and `VERIFIER` in `.env` if needed.
-     Especially, you should check addresses depending on which network you want to deploy contract.
-     If you deploy contract on `anvil` localnet, you should use the `COMPUTER` & `VERIFIER` address from openrank localnet.
-     Plus, you should use the `anvil` test wallet address as `SUBMITTER` one.
-     If you deploy contract on other testnet(e.g. Amoy Polygon tesnet), you should use the `COMPUTER` & `VERIFIER` address from openrank devnet.
+   - Modify the addresses of `SUBMITTER`, `COMPUTER`, and `VERIFIER` in `.env` if needed.  
+     Especially, you should check addresses depending on which network you want to deploy contract.  
+     If you deploy contract on `anvil` localnet, you should use the `COMPUTER` & `VERIFIER` address from openrank localnet, and the `SUBMITTER` one from `anvil` test wallet address.    
+     If you deploy contract on other testnet(e.g. Amoy Polygon tesnet), you should use the `COMPUTER` & `VERIFIER` address from openrank devnet.  
      Also, you should use the wallet address which is used as smart contract client tx **submission**, as `SUBMITTER` one.
 
 4. **Simulate Deployment**
