@@ -13,8 +13,9 @@
 
 3. **Configure Environment**
     - Create a `.env` file by copying the `.env.example` 
-    - Add the `SUBMITTER_SECRET_KEY`
-      The `SUBMITTER_SECRET_KEY` is for submitting tx from smart contract client, to blockchain. This key corresponds to `SUBMITTER` address in contract deployment.
+    - Add the `SUBMITTER_SECRET_KEY`  
+      The `SUBMITTER_SECRET_KEY` is for submitting tx from smart contract client, to blockchain.  
+      This key corresponds to `SUBMITTER` address in contract deployment.  
     - **NOTE**: Current `.env.example` contains the key of `anvil` 1st test wallet
 
 4. **Run the client**
