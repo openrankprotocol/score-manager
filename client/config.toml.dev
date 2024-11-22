@@ -1,0 +1,9 @@
+contract_address = "0xaabbcc..."
+chain_rpc_url = "https://rpc-amoy.polygon.technology/" # polygon amoy testnet
+chain_id = 80002
+
+# OpenRank block builder JSON-RPC endpoint
+openrank_rpc_url="https://or-dev-prod.k3l.io/API_KEY"  # contact ek@karma3labs.com for API key
+
+counter_db_path = "seq_number_db"
+interval_seconds = 10
