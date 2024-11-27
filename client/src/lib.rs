@@ -52,7 +52,7 @@ impl ComputeManagerClient {
         let secret_key = SigningKey::from_slice(secret_key_bytes.as_slice())?;
 
         let config_loader = config::Loader::new("openrank-smart-contract-client")?;
-        let config: Config = config_loader.load_or_create(include_str!("../config.toml.local"))?;
+        let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
 
         let contract_address = Address::from_str(&config.contract_address)?;
         let chain_rpc_url = Url::parse(&config.chain_rpc_url)?;
