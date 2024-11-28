@@ -24,6 +24,7 @@ use openrank_common::{
 use sol::ComputeManager::{self, Signature};
 
 const COUNTER_KEY: &str = "seq_number";
+const FAILED_SEQ_NUMBERS_KEY: &str = "failed_seq_numbers";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -66,7 +67,10 @@ impl ComputeManagerClient {
         signer.set_chain_id(Some(config.chain_id));
 
         let connection = DB::open_default(&config.db_path)?;
-        let db = Db { connection, db_path: config.db_path };
+        let db = Db {
+            connection,
+            db_path: config.db_path,
+        };
 
         let client = Self::new(
             contract_address,
@@ -207,28 +211,26 @@ impl ComputeManagerClient {
         Ok(compute_result)
     }
 
-    async fn submit_compute_result_txs(&self) -> Result<u64, Box<dyn Error>> {
+    async fn submit_compute_result_txs(&self) -> Result<(), Box<dyn Error>> {
         // fetch the last `seq_number`
-        let db = self.db.clone();
-        let last_seq_number = db.connection
-            .get(COUNTER_KEY)?
-            .and_then(|v| String::from_utf8(v).ok())
-            .and_then(|v| v.parse::<u64>().ok())
-            .unwrap_or(0);
-
+        let last_seq_number = self.retrieve_seq_number().await?;
         let mut curr_seq_number = last_seq_number;
 
-        info!("Fetching compute result, seq_number: {:?}", curr_seq_number);
         loop {
+            info!(
+                "submitting compute result for seq_number: {:?}",
+                curr_seq_number
+            );
+
             // fetch compute result with `seq_number`
             let compute_result = self.fetch_openrank_compute_result(curr_seq_number).await?;
 
             if compute_result.compute_verification_tx_hashes().is_empty() {
                 info!("Compute Job not yet verified, skipping submittion...");
-                Err("ComputeResult incomplete".to_string())
-            } else {
-                Ok(())
-            }?;
+                self.append_failed_seq_number(curr_seq_number).await?;
+                curr_seq_number += 1;
+                continue;
+            };
 
             // prepare args for fetching txs
             let mut txs_args = vec![(
@@ -248,8 +250,8 @@ impl ComputeManagerClient {
             // increment & save the `seq_number`
             curr_seq_number += 1;
 
-            let seq_number_str = curr_seq_number.to_string();
-            db.connection.put(COUNTER_KEY, seq_number_str)?;
+            // store the `seq_number`
+            self.store_seq_number(curr_seq_number).await?;
         }
     }
 
@@ -265,6 +267,52 @@ impl ComputeManagerClient {
                 debug!("Submittion error: {:?}", e);
             }
         }
+    }
+
+    /// Store the `seq_number` in DB
+    async fn store_seq_number(&self, seq_number: u64) -> Result<(), Box<dyn Error>> {
+        let db = self.db.clone();
+        db.connection
+            .put(COUNTER_KEY, bincode::serialize(&seq_number)?)?;
+        Ok(())
+    }
+
+    /// Retrieve the `seq_number` from DB
+    async fn retrieve_seq_number(&self) -> Result<u64, Box<dyn Error>> {
+        let db = self.db.clone();
+        let seq_number = db
+            .connection
+            .get(COUNTER_KEY)?
+            .and_then(|v| bincode::deserialize(&v).ok())
+            .unwrap_or(0);
+        Ok(seq_number)
+    }
+
+    /// Store the `failed_seq_numbers` in DB
+    async fn store_failed_seq_numbers(&self, seq_numbers: Vec<u64>) -> Result<(), Box<dyn Error>> {
+        let db = self.db.clone();
+        db.connection
+            .put(FAILED_SEQ_NUMBERS_KEY, bincode::serialize(&seq_numbers)?)?;
+        Ok(())
+    }
+
+    /// Retrieve the `failed_seq_numbers` from DB
+    async fn retrieve_failed_seq_numbers(&self) -> Result<Vec<u64>, Box<dyn Error>> {
+        let db = self.db.clone();
+        let seq_numbers = db
+            .connection
+            .get(FAILED_SEQ_NUMBERS_KEY)?
+            .and_then(|v| bincode::deserialize(&v).ok())
+            .unwrap_or(Vec::new());
+        Ok(seq_numbers)
+    }
+
+    /// Append the `seq_number` to the `failed_seq_numbers` vec
+    async fn append_failed_seq_number(&self, seq_number: u64) -> Result<(), Box<dyn Error>> {
+        let mut seq_numbers = self.retrieve_failed_seq_numbers().await?;
+        seq_numbers.push(seq_number);
+        self.store_failed_seq_numbers(seq_numbers).await?;
+        Ok(())
     }
 }
 
@@ -312,7 +360,10 @@ mod tests {
         let contract_address = *contract.address();
         let mock_db_path = "mock-db";
         let connection = DB::open_default(mock_db_path)?;
-        let mock_db = Db { connection, db_path: mock_db_path.to_string() };
+        let mock_db = Db {
+            connection,
+            db_path: mock_db_path.to_string(),
+        };
         let client = ComputeManagerClient::new(
             contract_address,
             chain_rpc_url,
