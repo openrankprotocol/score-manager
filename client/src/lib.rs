@@ -4,7 +4,7 @@ use jsonrpsee::{core::client::ClientT, http_client::HttpClient};
 use log::{debug, info};
 use rocksdb::DB;
 use serde::{Deserialize, Serialize};
-use std::{error::Error, str::FromStr, time::Duration};
+use std::{error::Error, str::FromStr, sync::Arc, time::Duration};
 
 use alloy::{
     hex,
@@ -35,12 +35,18 @@ pub struct Config {
     pub interval_seconds: u64,
 }
 
+#[derive(Debug)]
+pub struct Db {
+    connection: DB,
+    db_path: String,
+}
+
 pub struct ComputeManagerClient {
     contract_address: Address,
     chain_rpc_url: Url,
     signer: LocalSigner<SigningKey>,
     openrank_rpc_url: String,
-    db_path: String,
+    db: Arc<Db>,
     interval_seconds: u64,
 }
 
@@ -59,12 +65,15 @@ impl ComputeManagerClient {
         let mut signer: LocalSigner<SigningKey> = secret_key.into();
         signer.set_chain_id(Some(config.chain_id));
 
+        let connection = DB::open_default(&config.db_path)?;
+        let db = Db { connection, db_path: config.db_path };
+
         let client = Self::new(
             contract_address,
             chain_rpc_url,
             signer,
             config.openrank_rpc_url,
-            config.db_path,
+            db,
             config.interval_seconds,
         );
         Ok(client)
@@ -75,7 +84,7 @@ impl ComputeManagerClient {
         chain_rpc_url: Url,
         signer: LocalSigner<SigningKey>,
         openrank_rpc_url: String,
-        db_path: String,
+        db: Db,
         interval_seconds: u64,
     ) -> Self {
         Self {
@@ -83,7 +92,7 @@ impl ComputeManagerClient {
             chain_rpc_url,
             signer,
             openrank_rpc_url,
-            db_path,
+            db: Arc::new(db),
             interval_seconds,
         }
     }
@@ -200,8 +209,8 @@ impl ComputeManagerClient {
 
     async fn submit_compute_result_txs(&self) -> Result<u64, Box<dyn Error>> {
         // fetch the last `seq_number`
-        let db = DB::open_default(&self.db_path)?;
-        let last_seq_number = db
+        let db = self.db.clone();
+        let last_seq_number = db.connection
             .get(COUNTER_KEY)?
             .and_then(|v| String::from_utf8(v).ok())
             .and_then(|v| v.parse::<u64>().ok())
@@ -240,7 +249,7 @@ impl ComputeManagerClient {
             curr_seq_number += 1;
 
             let seq_number_str = curr_seq_number.to_string();
-            db.put(COUNTER_KEY, seq_number_str)?;
+            db.connection.put(COUNTER_KEY, seq_number_str)?;
         }
     }
 
@@ -301,12 +310,15 @@ mod tests {
 
         // Create a contract instance.
         let contract_address = *contract.address();
+        let mock_db_path = "mock-db";
+        let connection = DB::open_default(mock_db_path)?;
+        let mock_db = Db { connection, db_path: mock_db_path.to_string() };
         let client = ComputeManagerClient::new(
             contract_address,
             chain_rpc_url,
             signer,
             "mock_openrank_rpc".to_string(),
-            "mock_db_path".to_string(),
+            mock_db,
             0, // mock interval
         );
 
