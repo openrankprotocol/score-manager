@@ -31,7 +31,7 @@ pub struct Config {
     pub chain_rpc_url: String,
     pub chain_id: u64,
     pub openrank_rpc_url: String,
-    pub counter_db_path: String,
+    pub db_path: String,
     pub interval_seconds: u64,
 }
 
@@ -40,7 +40,7 @@ pub struct ComputeManagerClient {
     chain_rpc_url: Url,
     signer: LocalSigner<SigningKey>,
     openrank_rpc_url: String,
-    counter_db_path: String,
+    db_path: String,
     interval_seconds: u64,
 }
 
@@ -64,7 +64,7 @@ impl ComputeManagerClient {
             chain_rpc_url,
             signer,
             config.openrank_rpc_url,
-            config.counter_db_path,
+            config.db_path,
             config.interval_seconds,
         );
         Ok(client)
@@ -75,7 +75,7 @@ impl ComputeManagerClient {
         chain_rpc_url: Url,
         signer: LocalSigner<SigningKey>,
         openrank_rpc_url: String,
-        counter_db_path: String,
+        db_path: String,
         interval_seconds: u64,
     ) -> Self {
         Self {
@@ -83,7 +83,7 @@ impl ComputeManagerClient {
             chain_rpc_url,
             signer,
             openrank_rpc_url,
-            counter_db_path,
+            db_path,
             interval_seconds,
         }
     }
@@ -200,7 +200,7 @@ impl ComputeManagerClient {
 
     async fn submit_compute_result_txs(&self) -> Result<u64, Box<dyn Error>> {
         // fetch the last `seq_number`
-        let db = DB::open_default(&self.counter_db_path)?;
+        let db = DB::open_default(&self.db_path)?;
         let last_seq_number = db
             .get(COUNTER_KEY)?
             .and_then(|v| String::from_utf8(v).ok())
@@ -306,7 +306,7 @@ mod tests {
             chain_rpc_url,
             signer,
             "mock_openrank_rpc".to_string(),
-            "mock_counter_db_path".to_string(),
+            "mock_db_path".to_string(),
             0, // mock interval
         );
 
