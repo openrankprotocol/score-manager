@@ -42,6 +42,11 @@ pub struct Db {
     db_path: String,
 }
 
+enum SubmitSingleComputeResultResult {
+    Submitted,
+    NotVerified(u64), // refers to `seq_number` whose result has empty verification txs
+}
+
 pub struct ComputeManagerClient {
     contract_address: Address,
     chain_rpc_url: Url,
@@ -222,14 +227,30 @@ impl ComputeManagerClient {
                 curr_seq_number
             );
 
-            self.submit_single_compute_result_txs(curr_seq_number)
+            let res = self
+                .submit_single_compute_result_txs(curr_seq_number)
                 .await?;
+
+            if let SubmitSingleComputeResultResult::NotVerified(seq_number) = res {
+                self.append_failed_seq_number(seq_number).await?
+            };
 
             // increment & save the `seq_number`
             curr_seq_number += 1;
             self.store_seq_number(curr_seq_number).await?;
         }
 
+        Ok(())
+    }
+
+    async fn retry_failed_seq_numbers(&self) -> Result<(), Box<dyn Error>> {
+        let failed_seq_numbers = self.retrieve_failed_seq_numbers().await?;
+        for seq_number in failed_seq_numbers {
+            let res = self.submit_single_compute_result_txs(seq_number).await?;
+            if let SubmitSingleComputeResultResult::Submitted = res {
+                self.remove_failed_seq_number(seq_number).await?
+            };
+        }
         Ok(())
     }
 
@@ -243,6 +264,10 @@ impl ComputeManagerClient {
             let res = self.submit_compute_result_txs().await;
             if let Err(e) = res {
                 debug!("Submittion error: {:?}", e);
+            }
+            let res = self.retry_failed_seq_numbers().await;
+            if let Err(e) = res {
+                debug!("Retry of failed seq numbers error: {:?}", e);
             }
         }
     }
@@ -293,19 +318,25 @@ impl ComputeManagerClient {
         Ok(())
     }
 
+    /// Remove the `seq_number` from the `failed_seq_numbers` vec
+    async fn remove_failed_seq_number(&self, seq_number: u64) -> Result<(), Box<dyn Error>> {
+        let mut seq_numbers = self.retrieve_failed_seq_numbers().await?;
+        seq_numbers.retain(|&x| x != seq_number);
+        self.store_failed_seq_numbers(seq_numbers).await?;
+        Ok(())
+    }
+
     /// Submit the OpenRank compute result TXs
-    ///
-    /// NOTE: If the compute result is not yet verified, skip submission & append the `seq_number` to the `failed_seq_numbers`.
     async fn submit_single_compute_result_txs(
         &self,
         seq_number: u64,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<SubmitSingleComputeResultResult, Box<dyn Error>> {
         // fetch compute result with `seq_number`
         let compute_result = self.fetch_openrank_compute_result(seq_number).await?;
 
         if compute_result.compute_verification_tx_hashes().is_empty() {
             info!("Compute Job not yet verified, skipping submittion...");
-            self.append_failed_seq_number(seq_number).await?;
+            return Ok(SubmitSingleComputeResultResult::NotVerified(seq_number));
         };
 
         // prepare args for fetching txs
@@ -323,7 +354,7 @@ impl ComputeManagerClient {
             self.submit_openrank_tx(tx).await?;
         }
 
-        Ok(())
+        Ok(SubmitSingleComputeResultResult::Submitted)
     }
 }
 
