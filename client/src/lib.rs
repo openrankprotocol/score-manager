@@ -217,7 +217,7 @@ impl ComputeManagerClient {
     }
 
     /// Submit the TXs of multiple OpenRank compute results
-    /// 
+    ///
     /// NOTE: We submit 10 compute results at once
     async fn submit_compute_result_txs(&self) -> Result<(), Box<dyn Error>> {
         // fetch the last `seq_number`
