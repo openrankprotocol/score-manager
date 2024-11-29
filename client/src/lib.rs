@@ -221,6 +221,12 @@ impl ComputeManagerClient {
         let last_seq_number = self.retrieve_seq_number().await?;
         let mut curr_seq_number = last_seq_number;
 
+        // TODO: 
+        //      1. Here, we just submit TXs for 10 compute results at a time.
+        //         The number should be adjusted.
+        //      2. There is no upper limit for `seq_number`.
+        //         If it reaches the tip of current openrank network sequence, it will keep trying to submit TXs.
+        //         It can cause infinite addition of `seq_number` to `failed_seq_numbers`. Need to handle this.
         for _ in 0..10 {
             info!(
                 "submitting compute result for seq_number: {:?}",
