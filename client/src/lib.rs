@@ -1,7 +1,7 @@
 mod sol;
 
 use jsonrpsee::{core::client::ClientT, http_client::HttpClient};
-use log::info;
+use log::{debug, info};
 use rocksdb::DB;
 use serde::{Deserialize, Serialize};
 use std::{error::Error, str::FromStr, time::Duration};
@@ -198,7 +198,7 @@ impl ComputeManagerClient {
         Ok(compute_result)
     }
 
-    async fn submit_compute_result_txs(&self) -> Result<(), Box<dyn Error>> {
+    async fn submit_compute_result_txs(&self) -> Result<u64, Box<dyn Error>> {
         // fetch the last `seq_number`
         let db = DB::open_default(&self.counter_db_path)?;
         let last_seq_number = db
@@ -213,6 +213,13 @@ impl ComputeManagerClient {
         loop {
             // fetch compute result with `seq_number`
             let compute_result = self.fetch_openrank_compute_result(curr_seq_number).await?;
+
+            if compute_result.compute_verification_tx_hashes().is_empty() {
+                info!("Compute Job not yet verified, skipping submittion...");
+                Err("ComputeResult incomplete".to_string())
+            } else {
+                Ok(())
+            }?;
 
             // prepare args for fetching txs
             let mut txs_args = vec![(
@@ -244,7 +251,10 @@ impl ComputeManagerClient {
         loop {
             interval.tick().await;
             info!("Running periodic submission...");
-            self.submit_compute_result_txs().await?;
+            let res = self.submit_compute_result_txs().await;
+            if let Err(e) = res {
+                debug!("Submittion error: {:?}", e);
+            }
         }
     }
 }
