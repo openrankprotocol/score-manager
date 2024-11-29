@@ -216,43 +216,21 @@ impl ComputeManagerClient {
         let last_seq_number = self.retrieve_seq_number().await?;
         let mut curr_seq_number = last_seq_number;
 
-        loop {
+        for _ in 0..10 {
             info!(
                 "submitting compute result for seq_number: {:?}",
                 curr_seq_number
             );
 
-            // fetch compute result with `seq_number`
-            let compute_result = self.fetch_openrank_compute_result(curr_seq_number).await?;
-
-            if compute_result.compute_verification_tx_hashes().is_empty() {
-                info!("Compute Job not yet verified, skipping submittion...");
-                self.append_failed_seq_number(curr_seq_number).await?;
-                curr_seq_number += 1;
-                continue;
-            };
-
-            // prepare args for fetching txs
-            let mut txs_args = vec![(
-                "compute_commitment",
-                compute_result.compute_commitment_tx_hash().clone(),
-            )];
-            for tx_hash in compute_result.compute_verification_tx_hashes() {
-                txs_args.push(("compute_verification", tx_hash.clone()));
-            }
-
-            // fetch & submit txs, with args
-            for (tx_type, tx_hash) in txs_args {
-                let tx = self.fetch_openrank_tx(tx_type.to_string(), tx_hash).await?;
-                self.submit_openrank_tx(tx).await?;
-            }
+            self.submit_single_compute_result_txs(curr_seq_number)
+                .await?;
 
             // increment & save the `seq_number`
             curr_seq_number += 1;
-
-            // store the `seq_number`
             self.store_seq_number(curr_seq_number).await?;
         }
+
+        Ok(())
     }
 
     /// Submit the openrank TX into on-chain smart contract, in periodic interval
@@ -312,6 +290,39 @@ impl ComputeManagerClient {
         let mut seq_numbers = self.retrieve_failed_seq_numbers().await?;
         seq_numbers.push(seq_number);
         self.store_failed_seq_numbers(seq_numbers).await?;
+        Ok(())
+    }
+
+    /// Submit the OpenRank compute result TXs
+    ///
+    /// NOTE: If the compute result is not yet verified, skip submission & append the `seq_number` to the `failed_seq_numbers`.
+    async fn submit_single_compute_result_txs(
+        &self,
+        seq_number: u64,
+    ) -> Result<(), Box<dyn Error>> {
+        // fetch compute result with `seq_number`
+        let compute_result = self.fetch_openrank_compute_result(seq_number).await?;
+
+        if compute_result.compute_verification_tx_hashes().is_empty() {
+            info!("Compute Job not yet verified, skipping submittion...");
+            self.append_failed_seq_number(seq_number).await?;
+        };
+
+        // prepare args for fetching txs
+        let mut txs_args = vec![(
+            "compute_commitment",
+            compute_result.compute_commitment_tx_hash().clone(),
+        )];
+        for tx_hash in compute_result.compute_verification_tx_hashes() {
+            txs_args.push(("compute_verification", tx_hash.clone()));
+        }
+
+        // fetch & submit txs, with args
+        for (tx_type, tx_hash) in txs_args {
+            let tx = self.fetch_openrank_tx(tx_type.to_string(), tx_hash).await?;
+            self.submit_openrank_tx(tx).await?;
+        }
+
         Ok(())
     }
 }
