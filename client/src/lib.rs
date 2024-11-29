@@ -249,6 +249,10 @@ impl ComputeManagerClient {
         Ok(())
     }
 
+    /// Try to submit the TXs of the `failed_seq_numbers` & remove `seq_number` if succeed.
+    /// 
+    /// TODO: If one `seq_number` still fails after retries, the `failed_seq_numbers` will never be removed.
+    ///       It can cause endless growing of `failed_seq_numbers`.
     async fn retry_failed_seq_numbers(&self) -> Result<(), Box<dyn Error>> {
         let failed_seq_numbers = self.retrieve_failed_seq_numbers().await?;
         for seq_number in failed_seq_numbers {
