@@ -26,6 +26,8 @@ use sol::ComputeManager::{self, Signature};
 const COUNTER_KEY: &str = "seq_number";
 const FAILED_SEQ_NUMBERS_KEY: &str = "failed_seq_numbers";
 
+const BATCH_SIZE: usize = 10;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub contract_address: String,
@@ -217,14 +219,12 @@ impl ComputeManagerClient {
     }
 
     /// Submit the TXs of multiple OpenRank compute results
-    ///
-    /// NOTE: We submit 10 compute results at once
     async fn submit_compute_result_txs(&self) -> Result<(), Box<dyn Error>> {
         // fetch the last `seq_number`
         let last_seq_number = self.retrieve_seq_number().await?;
         let mut curr_seq_number = last_seq_number;
 
-        for _ in 0..10 {
+        for _ in 0..BATCH_SIZE {
             info!(
                 "submitting compute result for seq_number: {:?}",
                 curr_seq_number
