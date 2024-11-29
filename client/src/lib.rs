@@ -216,17 +216,14 @@ impl ComputeManagerClient {
         Ok(compute_result)
     }
 
+    /// Submit the TXs of multiple OpenRank compute results
+    /// 
+    /// NOTE: We submit 10 compute results at once
     async fn submit_compute_result_txs(&self) -> Result<(), Box<dyn Error>> {
         // fetch the last `seq_number`
         let last_seq_number = self.retrieve_seq_number().await?;
         let mut curr_seq_number = last_seq_number;
 
-        // TODO: 
-        //      1. Here, we just submit TXs for 10 compute results at a time.
-        //         The number should be adjusted.
-        //      2. There is no upper limit for `seq_number`.
-        //         If it reaches the tip of current openrank network sequence, it will keep trying to submit TXs.
-        //         It can cause infinite addition of `seq_number` to `failed_seq_numbers`. Need to handle this.
         for _ in 0..10 {
             info!(
                 "submitting compute result for seq_number: {:?}",
@@ -250,9 +247,6 @@ impl ComputeManagerClient {
     }
 
     /// Try to submit the TXs of the `failed_seq_numbers` & remove `seq_number` if succeed.
-    /// 
-    /// TODO: If one `seq_number` still fails after retries, the `failed_seq_numbers` will never be removed.
-    ///       It can cause endless growing of `failed_seq_numbers`.
     async fn retry_failed_seq_numbers(&self) -> Result<(), Box<dyn Error>> {
         let failed_seq_numbers = self.retrieve_failed_seq_numbers().await?;
         for seq_number in failed_seq_numbers {
