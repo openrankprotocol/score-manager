@@ -267,7 +267,7 @@ impl ComputeManagerClient {
             info!("Running periodic submission...");
             let res = self.submit_compute_result_txs().await;
             if let Err(e) = res {
-                debug!("Submittion error: {:?}", e);
+                debug!("Submission error: {:?}", e);
             }
             let res = self.retry_failed_seq_numbers().await;
             if let Err(e) = res {
@@ -339,7 +339,7 @@ impl ComputeManagerClient {
         let compute_result = self.fetch_openrank_compute_result(seq_number).await?;
 
         if compute_result.compute_verification_tx_hashes().is_empty() {
-            info!("Compute Job not yet verified, skipping submittion...");
+            info!("Compute Job not yet verified, skipping submission...");
             return Ok(ComputeResultSubmission::Failure(seq_number));
         };
 
