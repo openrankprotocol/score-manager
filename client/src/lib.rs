@@ -39,6 +39,7 @@ pub struct Config {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct Db {
     connection: DB,
     db_path: String,
