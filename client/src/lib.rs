@@ -44,9 +44,9 @@ pub struct Db {
     db_path: String,
 }
 
-enum SubmitSingleComputeResultResult {
-    Submitted,
-    NotVerified(u64), // refers to `seq_number` whose result has empty verification txs
+enum ComputeResultSubmission {
+    Success,
+    Failure(u64), // refers to `seq_number` whose result has empty verification txs
 }
 
 pub struct ComputeManagerClient {
@@ -234,7 +234,7 @@ impl ComputeManagerClient {
                 .submit_single_compute_result_txs(curr_seq_number)
                 .await?;
 
-            if let SubmitSingleComputeResultResult::NotVerified(seq_number) = res {
+            if let ComputeResultSubmission::Failure(seq_number) = res {
                 self.append_failed_seq_number(seq_number).await?
             };
 
@@ -251,7 +251,7 @@ impl ComputeManagerClient {
         let failed_seq_numbers = self.retrieve_failed_seq_numbers().await?;
         for seq_number in failed_seq_numbers {
             let res = self.submit_single_compute_result_txs(seq_number).await?;
-            if let SubmitSingleComputeResultResult::Submitted = res {
+            if let ComputeResultSubmission::Success = res {
                 self.remove_failed_seq_number(seq_number).await?
             };
         }
@@ -334,13 +334,13 @@ impl ComputeManagerClient {
     async fn submit_single_compute_result_txs(
         &self,
         seq_number: u64,
-    ) -> Result<SubmitSingleComputeResultResult, Box<dyn Error>> {
+    ) -> Result<ComputeResultSubmission, Box<dyn Error>> {
         // fetch compute result with `seq_number`
         let compute_result = self.fetch_openrank_compute_result(seq_number).await?;
 
         if compute_result.compute_verification_tx_hashes().is_empty() {
             info!("Compute Job not yet verified, skipping submittion...");
-            return Ok(SubmitSingleComputeResultResult::NotVerified(seq_number));
+            return Ok(ComputeResultSubmission::Failure(seq_number));
         };
 
         // prepare args for fetching txs
@@ -358,7 +358,7 @@ impl ComputeManagerClient {
             self.submit_openrank_tx(tx).await?;
         }
 
-        Ok(SubmitSingleComputeResultResult::Submitted)
+        Ok(ComputeResultSubmission::Success)
     }
 }
 
