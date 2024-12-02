@@ -23,7 +23,7 @@ use openrank_common::{
 };
 use sol::ComputeManager::{self, Signature};
 
-const COUNTER_KEY: &str = "seq_number";
+const LAST_SEQ_NUMBER_KEY: &str = "last_seq_number";
 const SKIPPED_SEQ_NUMBERS_KEY: &str = "skipped_seq_numbers";
 
 const BATCH_SIZE: usize = 10;
@@ -221,7 +221,7 @@ impl ComputeManagerClient {
     /// Submit the TXs of multiple OpenRank compute results
     async fn submit_compute_result_txs(&self) -> Result<(), Box<dyn Error>> {
         // fetch the last `seq_number`
-        let last_seq_number = self.retrieve_seq_number().await?;
+        let last_seq_number = self.retrieve_last_seq_number().await?;
         let mut curr_seq_number = last_seq_number;
 
         for _ in 0..BATCH_SIZE {
@@ -240,7 +240,7 @@ impl ComputeManagerClient {
 
             // increment & save the `seq_number`
             curr_seq_number += 1;
-            self.store_seq_number(curr_seq_number).await?;
+            self.store_last_seq_number(curr_seq_number).await?;
         }
 
         Ok(())
@@ -276,20 +276,20 @@ impl ComputeManagerClient {
         }
     }
 
-    /// Store the `seq_number` in DB
-    async fn store_seq_number(&self, seq_number: u64) -> Result<(), Box<dyn Error>> {
+    /// Store the `last_seq_number` in DB
+    async fn store_last_seq_number(&self, seq_number: u64) -> Result<(), Box<dyn Error>> {
         let db = self.db.clone();
         db.connection
-            .put(COUNTER_KEY, bincode::serialize(&seq_number)?)?;
+            .put(LAST_SEQ_NUMBER_KEY, bincode::serialize(&seq_number)?)?;
         Ok(())
     }
 
-    /// Retrieve the `seq_number` from DB
-    async fn retrieve_seq_number(&self) -> Result<u64, Box<dyn Error>> {
+    /// Retrieve the `last_seq_number` from DB
+    async fn retrieve_last_seq_number(&self) -> Result<u64, Box<dyn Error>> {
         let db = self.db.clone();
         let seq_number = db
             .connection
-            .get(COUNTER_KEY)?
+            .get(LAST_SEQ_NUMBER_KEY)?
             .and_then(|v| bincode::deserialize(&v).ok())
             .unwrap_or(0);
         Ok(seq_number)
