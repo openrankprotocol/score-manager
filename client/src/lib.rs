@@ -24,7 +24,7 @@ use openrank_common::{
 use sol::ComputeManager::{self, Signature};
 
 const COUNTER_KEY: &str = "seq_number";
-const FAILED_SEQ_NUMBERS_KEY: &str = "failed_seq_numbers";
+const SKIPPED_SEQ_NUMBERS_KEY: &str = "skipped_seq_numbers";
 
 const BATCH_SIZE: usize = 10;
 
@@ -46,7 +46,7 @@ pub struct Db {
 
 enum ComputeResultSubmission {
     Success,
-    Failure(u64), // refers to `seq_number` whose result has empty verification txs
+    Skipped(u64), // refers to `seq_number` whose result has empty verification txs
 }
 
 pub struct ComputeManagerClient {
@@ -234,8 +234,8 @@ impl ComputeManagerClient {
                 .submit_single_compute_result_txs(curr_seq_number)
                 .await?;
 
-            if let ComputeResultSubmission::Failure(seq_number) = res {
-                self.append_failed_seq_number(seq_number).await?
+            if let ComputeResultSubmission::Skipped(seq_number) = res {
+                self.append_to_skipped_seq_numbers(seq_number).await?
             };
 
             // increment & save the `seq_number`
@@ -246,13 +246,13 @@ impl ComputeManagerClient {
         Ok(())
     }
 
-    /// Try to submit the TXs of the `failed_seq_numbers` & remove `seq_number` if succeed.
-    async fn retry_failed_seq_numbers(&self) -> Result<(), Box<dyn Error>> {
-        let failed_seq_numbers = self.retrieve_failed_seq_numbers().await?;
-        for seq_number in failed_seq_numbers {
+    /// Try to submit the TXs of the `skipped_seq_numbers` & remove `seq_number` if succeed.
+    async fn retry_skipped_seq_numbers(&self) -> Result<(), Box<dyn Error>> {
+        let skipped_seq_numbers = self.retrieve_skipped_seq_numbers().await?;
+        for seq_number in skipped_seq_numbers {
             let res = self.submit_single_compute_result_txs(seq_number).await?;
             if let ComputeResultSubmission::Success = res {
-                self.remove_failed_seq_number(seq_number).await?
+                self.remove_from_skipped_seq_numbers(seq_number).await?
             };
         }
         Ok(())
@@ -269,9 +269,9 @@ impl ComputeManagerClient {
             if let Err(e) = res {
                 debug!("Submission error: {:?}", e);
             }
-            let res = self.retry_failed_seq_numbers().await;
+            let res = self.retry_skipped_seq_numbers().await;
             if let Err(e) = res {
-                debug!("Retry of failed seq numbers error: {:?}", e);
+                debug!("Retry of skipped seq numbers error: {:?}", e);
             }
         }
     }
@@ -295,38 +295,38 @@ impl ComputeManagerClient {
         Ok(seq_number)
     }
 
-    /// Store the `failed_seq_numbers` in DB
-    async fn store_failed_seq_numbers(&self, seq_numbers: Vec<u64>) -> Result<(), Box<dyn Error>> {
+    /// Store the `skipped_seq_numbers` in DB
+    async fn store_skipped_seq_numbers(&self, seq_numbers: Vec<u64>) -> Result<(), Box<dyn Error>> {
         let db = self.db.clone();
         db.connection
-            .put(FAILED_SEQ_NUMBERS_KEY, bincode::serialize(&seq_numbers)?)?;
+            .put(SKIPPED_SEQ_NUMBERS_KEY, bincode::serialize(&seq_numbers)?)?;
         Ok(())
     }
 
-    /// Retrieve the `failed_seq_numbers` from DB
-    async fn retrieve_failed_seq_numbers(&self) -> Result<Vec<u64>, Box<dyn Error>> {
+    /// Retrieve the `skipped_seq_numbers` from DB
+    async fn retrieve_skipped_seq_numbers(&self) -> Result<Vec<u64>, Box<dyn Error>> {
         let db = self.db.clone();
         let seq_numbers = db
             .connection
-            .get(FAILED_SEQ_NUMBERS_KEY)?
+            .get(SKIPPED_SEQ_NUMBERS_KEY)?
             .and_then(|v| bincode::deserialize(&v).ok())
             .unwrap_or(Vec::new());
         Ok(seq_numbers)
     }
 
-    /// Append the `seq_number` to the `failed_seq_numbers` vec
-    async fn append_failed_seq_number(&self, seq_number: u64) -> Result<(), Box<dyn Error>> {
-        let mut seq_numbers = self.retrieve_failed_seq_numbers().await?;
+    /// Append the `seq_number` to the `skipped_seq_numbers`, in DB
+    async fn append_to_skipped_seq_numbers(&self, seq_number: u64) -> Result<(), Box<dyn Error>> {
+        let mut seq_numbers = self.retrieve_skipped_seq_numbers().await?;
         seq_numbers.push(seq_number);
-        self.store_failed_seq_numbers(seq_numbers).await?;
+        self.store_skipped_seq_numbers(seq_numbers).await?;
         Ok(())
     }
 
-    /// Remove the `seq_number` from the `failed_seq_numbers` vec
-    async fn remove_failed_seq_number(&self, seq_number: u64) -> Result<(), Box<dyn Error>> {
-        let mut seq_numbers = self.retrieve_failed_seq_numbers().await?;
+    /// Remove the `seq_number` from the `skipped_seq_numbers`, in DB
+    async fn remove_from_skipped_seq_numbers(&self, seq_number: u64) -> Result<(), Box<dyn Error>> {
+        let mut seq_numbers = self.retrieve_skipped_seq_numbers().await?;
         seq_numbers.retain(|&x| x != seq_number);
-        self.store_failed_seq_numbers(seq_numbers).await?;
+        self.store_skipped_seq_numbers(seq_numbers).await?;
         Ok(())
     }
 
@@ -340,7 +340,7 @@ impl ComputeManagerClient {
 
         if compute_result.compute_verification_tx_hashes().is_empty() {
             info!("Compute Job not yet verified, skipping submission...");
-            return Ok(ComputeResultSubmission::Failure(seq_number));
+            return Ok(ComputeResultSubmission::Skipped(seq_number));
         };
 
         // prepare args for fetching txs
