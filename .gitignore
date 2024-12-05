@@ -108,6 +108,7 @@ fabric.properties
 # Script for removing local db folders
 flush_db.sh
 
-seq_number_db
+local-storage
+mock-db
 
 config.toml

@@ -5,5 +5,5 @@ chain_id = 31337
 # OpenRank block builder JSON-RPC endpoint
 openrank_rpc_url="http://127.0.0.1:60000"
 
-counter_db_path = "seq_number_db"
+db_path = "local-storage"
 interval_seconds = 10

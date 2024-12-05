@@ -4,7 +4,7 @@ use jsonrpsee::{core::client::ClientT, http_client::HttpClient};
 use log::{debug, info};
 use rocksdb::DB;
 use serde::{Deserialize, Serialize};
-use std::{error::Error, str::FromStr, time::Duration};
+use std::{error::Error, str::FromStr, sync::Arc, time::Duration};
 
 use alloy::{
     hex,
@@ -23,7 +23,10 @@ use openrank_common::{
 };
 use sol::ComputeManager::{self, Signature};
 
-const COUNTER_KEY: &str = "seq_number";
+const LAST_SEQ_NUMBER_KEY: &str = "last_seq_number";
+const SKIPPED_SEQ_NUMBERS_KEY: &str = "skipped_seq_numbers";
+
+const BATCH_SIZE: usize = 10;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -31,8 +34,20 @@ pub struct Config {
     pub chain_rpc_url: String,
     pub chain_id: u64,
     pub openrank_rpc_url: String,
-    pub counter_db_path: String,
+    pub db_path: String,
     pub interval_seconds: u64,
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct Db {
+    connection: DB,
+    db_path: String,
+}
+
+enum ComputeResultSubmission {
+    Success,
+    Skipped(u64), // refers to `seq_number` whose result has empty verification txs
 }
 
 pub struct ComputeManagerClient {
@@ -40,7 +55,7 @@ pub struct ComputeManagerClient {
     chain_rpc_url: Url,
     signer: LocalSigner<SigningKey>,
     openrank_rpc_url: String,
-    counter_db_path: String,
+    db: Arc<Db>,
     interval_seconds: u64,
 }
 
@@ -59,12 +74,18 @@ impl ComputeManagerClient {
         let mut signer: LocalSigner<SigningKey> = secret_key.into();
         signer.set_chain_id(Some(config.chain_id));
 
+        let connection = DB::open_default(&config.db_path)?;
+        let db = Db {
+            connection,
+            db_path: config.db_path,
+        };
+
         let client = Self::new(
             contract_address,
             chain_rpc_url,
             signer,
             config.openrank_rpc_url,
-            config.counter_db_path,
+            db,
             config.interval_seconds,
         );
         Ok(client)
@@ -75,7 +96,7 @@ impl ComputeManagerClient {
         chain_rpc_url: Url,
         signer: LocalSigner<SigningKey>,
         openrank_rpc_url: String,
-        counter_db_path: String,
+        db: Db,
         interval_seconds: u64,
     ) -> Self {
         Self {
@@ -83,7 +104,7 @@ impl ComputeManagerClient {
             chain_rpc_url,
             signer,
             openrank_rpc_url,
-            counter_db_path,
+            db: Arc::new(db),
             interval_seconds,
         }
     }
@@ -198,50 +219,44 @@ impl ComputeManagerClient {
         Ok(compute_result)
     }
 
-    async fn submit_compute_result_txs(&self) -> Result<u64, Box<dyn Error>> {
+    /// Submit the TXs of multiple OpenRank compute results
+    async fn submit_compute_result_txs(&self) -> Result<(), Box<dyn Error>> {
         // fetch the last `seq_number`
-        let db = DB::open_default(&self.counter_db_path)?;
-        let last_seq_number = db
-            .get(COUNTER_KEY)?
-            .and_then(|v| String::from_utf8(v).ok())
-            .and_then(|v| v.parse::<u64>().ok())
-            .unwrap_or(0);
-
+        let last_seq_number = self.retrieve_last_seq_number().await?;
         let mut curr_seq_number = last_seq_number;
 
-        info!("Fetching compute result, seq_number: {:?}", curr_seq_number);
-        loop {
-            // fetch compute result with `seq_number`
-            let compute_result = self.fetch_openrank_compute_result(curr_seq_number).await?;
+        for _ in 0..BATCH_SIZE {
+            info!(
+                "submitting compute result for seq_number: {:?}",
+                curr_seq_number
+            );
 
-            if compute_result.compute_verification_tx_hashes().is_empty() {
-                info!("Compute Job not yet verified, skipping submittion...");
-                Err("ComputeResult incomplete".to_string())
-            } else {
-                Ok(())
-            }?;
+            let res = self
+                .submit_single_compute_result_txs(curr_seq_number)
+                .await?;
 
-            // prepare args for fetching txs
-            let mut txs_args = vec![(
-                "compute_commitment",
-                compute_result.compute_commitment_tx_hash().clone(),
-            )];
-            for tx_hash in compute_result.compute_verification_tx_hashes() {
-                txs_args.push(("compute_verification", tx_hash.clone()));
-            }
-
-            // fetch & submit txs, with args
-            for (tx_type, tx_hash) in txs_args {
-                let tx = self.fetch_openrank_tx(tx_type.to_string(), tx_hash).await?;
-                self.submit_openrank_tx(tx).await?;
-            }
+            if let ComputeResultSubmission::Skipped(seq_number) = res {
+                self.append_to_skipped_seq_numbers(seq_number).await?
+            };
 
             // increment & save the `seq_number`
             curr_seq_number += 1;
-
-            let seq_number_str = curr_seq_number.to_string();
-            db.put(COUNTER_KEY, seq_number_str)?;
+            self.store_last_seq_number(curr_seq_number).await?;
         }
+
+        Ok(())
+    }
+
+    /// Try to submit the TXs of the `skipped_seq_numbers` & remove `seq_number` if succeed.
+    async fn retry_skipped_seq_numbers(&self) -> Result<(), Box<dyn Error>> {
+        let skipped_seq_numbers = self.retrieve_skipped_seq_numbers().await?;
+        for seq_number in skipped_seq_numbers {
+            let res = self.submit_single_compute_result_txs(seq_number).await?;
+            if let ComputeResultSubmission::Success = res {
+                self.remove_from_skipped_seq_numbers(seq_number).await?
+            };
+        }
+        Ok(())
     }
 
     /// Submit the openrank TX into on-chain smart contract, in periodic interval
@@ -253,9 +268,98 @@ impl ComputeManagerClient {
             info!("Running periodic submission...");
             let res = self.submit_compute_result_txs().await;
             if let Err(e) = res {
-                debug!("Submittion error: {:?}", e);
+                debug!("Submission error: {:?}", e);
+            }
+            let res = self.retry_skipped_seq_numbers().await;
+            if let Err(e) = res {
+                debug!("Retry of skipped seq numbers error: {:?}", e);
             }
         }
+    }
+
+    /// Store the `last_seq_number` in DB
+    async fn store_last_seq_number(&self, seq_number: u64) -> Result<(), Box<dyn Error>> {
+        let db = self.db.clone();
+        db.connection
+            .put(LAST_SEQ_NUMBER_KEY, bincode::serialize(&seq_number)?)?;
+        Ok(())
+    }
+
+    /// Retrieve the `last_seq_number` from DB
+    async fn retrieve_last_seq_number(&self) -> Result<u64, Box<dyn Error>> {
+        let db = self.db.clone();
+        let seq_number = db
+            .connection
+            .get(LAST_SEQ_NUMBER_KEY)?
+            .and_then(|v| bincode::deserialize(&v).ok())
+            .unwrap_or(0);
+        Ok(seq_number)
+    }
+
+    /// Store the `skipped_seq_numbers` in DB
+    async fn store_skipped_seq_numbers(&self, seq_numbers: Vec<u64>) -> Result<(), Box<dyn Error>> {
+        let db = self.db.clone();
+        db.connection
+            .put(SKIPPED_SEQ_NUMBERS_KEY, bincode::serialize(&seq_numbers)?)?;
+        Ok(())
+    }
+
+    /// Retrieve the `skipped_seq_numbers` from DB
+    async fn retrieve_skipped_seq_numbers(&self) -> Result<Vec<u64>, Box<dyn Error>> {
+        let db = self.db.clone();
+        let seq_numbers = db
+            .connection
+            .get(SKIPPED_SEQ_NUMBERS_KEY)?
+            .and_then(|v| bincode::deserialize(&v).ok())
+            .unwrap_or(Vec::new());
+        Ok(seq_numbers)
+    }
+
+    /// Append the `seq_number` to the `skipped_seq_numbers`, in DB
+    async fn append_to_skipped_seq_numbers(&self, seq_number: u64) -> Result<(), Box<dyn Error>> {
+        let mut seq_numbers = self.retrieve_skipped_seq_numbers().await?;
+        seq_numbers.push(seq_number);
+        self.store_skipped_seq_numbers(seq_numbers).await?;
+        Ok(())
+    }
+
+    /// Remove the `seq_number` from the `skipped_seq_numbers`, in DB
+    async fn remove_from_skipped_seq_numbers(&self, seq_number: u64) -> Result<(), Box<dyn Error>> {
+        let mut seq_numbers = self.retrieve_skipped_seq_numbers().await?;
+        seq_numbers.retain(|&x| x != seq_number);
+        self.store_skipped_seq_numbers(seq_numbers).await?;
+        Ok(())
+    }
+
+    /// Submit the OpenRank compute result TXs
+    async fn submit_single_compute_result_txs(
+        &self,
+        seq_number: u64,
+    ) -> Result<ComputeResultSubmission, Box<dyn Error>> {
+        // fetch compute result with `seq_number`
+        let compute_result = self.fetch_openrank_compute_result(seq_number).await?;
+
+        if compute_result.compute_verification_tx_hashes().is_empty() {
+            info!("Compute Job not yet verified, skipping submission...");
+            return Ok(ComputeResultSubmission::Skipped(seq_number));
+        };
+
+        // prepare args for fetching txs
+        let mut txs_args = vec![(
+            "compute_commitment",
+            compute_result.compute_commitment_tx_hash().clone(),
+        )];
+        for tx_hash in compute_result.compute_verification_tx_hashes() {
+            txs_args.push(("compute_verification", tx_hash.clone()));
+        }
+
+        // fetch & submit txs, with args
+        for (tx_type, tx_hash) in txs_args {
+            let tx = self.fetch_openrank_tx(tx_type.to_string(), tx_hash).await?;
+            self.submit_openrank_tx(tx).await?;
+        }
+
+        Ok(ComputeResultSubmission::Success)
     }
 }
 
@@ -301,12 +405,18 @@ mod tests {
 
         // Create a contract instance.
         let contract_address = *contract.address();
+        let mock_db_path = "mock-db";
+        let connection = DB::open_default(mock_db_path)?;
+        let mock_db = Db {
+            connection,
+            db_path: mock_db_path.to_string(),
+        };
         let client = ComputeManagerClient::new(
             contract_address,
             chain_rpc_url,
             signer,
             "mock_openrank_rpc".to_string(),
-            "mock_counter_db_path".to_string(),
+            mock_db,
             0, // mock interval
         );
 
